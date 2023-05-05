@@ -16,7 +16,7 @@
 9. Call the Twilio phone number you created
 
 ### Understanding Context & Data
-```data.py``` & ```context.py``` can be used to prompt the Phonne call Assistant.
+```data.py``` & ```context.py``` can be used to prompt the Phone call Assistant.
 In this example the context is provided via a variable ```intuit``` describing information about the persona we wish the model to emulate. The data is a single mock user account that the model will have access to via an indexed vector database. 
 
 Feel free to get creative with the prompts!
