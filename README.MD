@@ -10,7 +10,7 @@
 3. [Create a Twilio account](https://console.twilio.com/)
 4. [Create a Twilio Voice Phone Number](https://console.twilio.com/us1/develop/voice/overview)
 5. [Create an AssemblyAI Account](https://www.assemblyai.com/app/)
-6. Paste the appropriate API keys in the ```app.py``` file.
+6. Paste the appropriate API keys & NGROK_URL in the ```app.py``` file.
 7. Run ```pip3 install -r requirements.txt```
 8. Run ```python3 app.py```
 9. Call the Twilio phone number you created
