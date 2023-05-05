@@ -54,24 +54,30 @@ def speak(text):
     
 # AssemblyAI Question Answering via LeMUR
 def ask(question):
-    url = "https://lemur.assemblyai-solutions.com"
-    global conversation_history
-    # Send the question to LeMUR
-    # Provide user_info and intuit as context
-    payload = json.dumps({
-    "question": question,
-    "conversation_history": conversation_history,
-    "context": {user_info, intuit}
-    })
-    headers = {
-    'Content-Type': 'application/json',
-    'Authorization': ASSEMBLYAI_API_KEY
-    }
-    response = requests.request("POST", url, headers=headers, data=payload)
-    answer = response.text
-    # Store conversation hisotry
-    conversation_history.append({"question": question, "answer": answer})
-    return answer
+    global questions
+    if question not in questions:
+        url = "https://lemur.assemblyai-solutions.com"
+        global conversation_history
+        # Send the question to LeMUR
+        # Provide user_info and intuit as context
+        payload = json.dumps({
+        "question": question,
+        "conversation_history": conversation_history,
+        "context": {"data": user_info, "context": intuit}
+        })
+        headers = {
+        'Content-Type': 'application/json',
+        'Authorization': ASSEMBLYAI_API_KEY
+        }
+        response = requests.request("POST", url, headers=headers, data=payload)
+        answer = response.text
+        # Store conversation hisotry
+        conversation_history.append({"question": question, "answer": answer})
+        # Add the question to the list of questions
+        questions.append(question)
+        return answer
+    else:
+        return None
 
 # AssemblyAI WebSocket Response Handler
 def handle_assembly_messages(assembly_ws):
@@ -103,10 +109,12 @@ def handle_assembly_messages(assembly_ws):
                             answering_question = True
                             print(f"Question: {current_statement}")
                             response = ask(current_statement)
-                            speak(response)
-                            current_statement = ""
+                            if response is not None:
+                                speak(response)
+                                current_statement = ""
             elif message["message_type"] == "FinalTranscript":
-                print(f"Transcript: {message['text']}")
+                if len(message['text']) > 0:
+                    print(f"Transcript: {message['text']}")
 
     except websocket.WebSocketConnectionClosedException:
         print("WebSocket closed")
@@ -205,7 +213,7 @@ def stream(ws):
         assembly_messages_thread.join()
 
 if __name__ == '__main__':
-
+    questions = []
     # Set CallSid to None, this will be used to track the call. Only one call can be used at a time.
     call_sid = None
     # Set conversation history to an empty list
