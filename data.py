@@ -1,4 +1,4 @@
-data = """
+user_info = """
 '{
     "name:" Garvan Doyle",
     "email": "garvandoyle@gmail.com",

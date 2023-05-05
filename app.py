@@ -13,15 +13,15 @@ from pydub import AudioSegment
 import io
 from urllib.parse import urlencode
 import requests
-from context import context
-from data import data
+from context import intuit
+from data import user_info
 
 
 ASSEMBLYAI_API_KEY = ""
-ACCOUNT_SID = ""
-AUTH_TOKEN = ""
+TWILIO_ACCOUNT_SID = ""
+TWILIO_AUTH_TOKEN = ""
 
-BASE_URL = ""
+NGROK_URL = ""
 
 app = Flask(__name__)
 sock = Sock(app)
@@ -34,16 +34,17 @@ BS = '\x08'
 
 # Twilio Text to Speech on Call
 def speak(text):
-
-    client = Client(ACCOUNT_SID, AUTH_TOKEN)
-
+    # Connect to the Twilio API
+    client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    # Encode the text to be spoken
     encoded_text = quote(text)
-
     # Update the ongoing call with the new TwiML URL
     try:
+        # Check to see if we are currently answering a question
         global answering_question
         if answering_question:
-            call = client.calls(call_sid).update(url=BASE_URL +"/response?text="+encoded_text, method='POST')
+            # Update the call with the new TwiML URL + text to be spoken
+            call = client.calls(call_sid).update(url=NGROK_URL +"/response?text="+encoded_text, method='POST')
             print(f'Call updated with text: {text}')
             
         else:
@@ -51,14 +52,16 @@ def speak(text):
     except Exception as e:
         print(f'Error updating call: {e}')
     
-
+# AssemblyAI Question Answering via LeMUR
 def ask(question):
     url = "https://lemur.assemblyai-solutions.com"
     global conversation_history
+    # Send the question to LeMUR
+    # Provide user_info and intuit as context
     payload = json.dumps({
     "question": question,
     "conversation_history": conversation_history,
-    "context": context
+    "context": {user_info, intuit}
     })
     headers = {
     'Content-Type': 'application/json',
@@ -66,12 +69,17 @@ def ask(question):
     }
     response = requests.request("POST", url, headers=headers, data=payload)
     answer = response.text
-    
+    # Store conversation hisotry
     conversation_history.append({"question": question, "answer": answer})
     return answer
 
 # AssemblyAI WebSocket Response Handler
 def handle_assembly_messages(assembly_ws):
+    # AssemblyAI returns a JSON message with a message_type property
+    # The message_type property can be one of the following:
+    # SessionBegins - This message is sent when the WebSocket connection is established
+    # PartialTranscript (Lower Latency) - This message is sent when AssemblyAI has transcribed the audio
+    # FinalTranscript (Higher Accuracy) - This message is sent when AssemblyAI has transcribed and formatted the audio
     current_statement = ""
     try:
         while True:
@@ -90,7 +98,6 @@ def handle_assembly_messages(assembly_ws):
                 if not answering_question:
                     if len(message['text']) > 0:
                         current_statement = message['text']
-                        print(f"Partial transcript received: {message['text']}")
                     else:
                         if len(current_statement) > 0:
                             answering_question = True
@@ -98,6 +105,8 @@ def handle_assembly_messages(assembly_ws):
                             response = ask(current_statement)
                             speak(response)
                             current_statement = ""
+            elif message["message_type"] == "FinalTranscript":
+                print(f"Transcript: {message['text']}")
 
     except websocket.WebSocketConnectionClosedException:
         print("WebSocket closed")
@@ -106,6 +115,8 @@ def handle_assembly_messages(assembly_ws):
 
 
 # Twilio Voice Request Handler
+# This is the URL that Twilio will request when a call is received
+# This route is used to initiate the call and start the WebSocket connection
 @app.route('/call', methods=['POST'])
 def call():
     """Accept a phone call."""
@@ -123,6 +134,8 @@ def call():
 
 
 # Twilio Voice Request Handler
+# This text to speech route is used to update the call with new text to be spoken.
+# The call is routed to this URL with the text to be spoken as a query parameter.
 @app.route('/response', methods=['POST'])
 def respond():
     """Accept a phone call."""
@@ -137,12 +150,13 @@ def respond():
 @sock.route('/stream')
 def stream(ws):
     """Receive and transcribe audio stream."""
-
+    # Set answering_question to False
     global answering_question
     answering_question = False
-
     # AssemblyAI WebSocket connection
+    # AssemblyAI requires a sample rate of 16kHz
     sample_rate = 16000
+    # AssemblyAI allows a list of words to boost that will be given a higher priority in the transcription
     word_boost = ["Intuit", "AssemblyAI", "Garvan", "garvan"]
     params = {"sample_rate": sample_rate, "word_boost": json.dumps(word_boost)}
     assembly_ws = websocket.create_connection(
@@ -164,11 +178,12 @@ def stream(ws):
             elif packet['event'] == 'stop':
                 print('\nStreaming has stopped')
             elif packet['event'] == 'media':
+                # Convert the audio data from 8-bit ulaw to 16-bit PCM
                 audio = base64.b64decode(packet['media']['payload'])
                 audio = audioop.ulaw2lin(audio, 2)
                 audio = audioop.ratecv(audio, 2, 1, 8000, 16000, None)[0]
+                # Add the converted audio data to the buffer - Twilio sends 20ms of audio in each packet - AssemblyAI requires 120ms of audio to transcribe
                 audio_buffer += audio
-
                 # Calculate the duration of the buffered audio data in milliseconds
                 audio_segment = AudioSegment.from_file(io.BytesIO(audio_buffer), format="raw", sample_width=2, channels=1, frame_rate=16000)
                 duration_ms = len(audio_segment)
@@ -190,10 +205,16 @@ def stream(ws):
         assembly_messages_thread.join()
 
 if __name__ == '__main__':
+
+    # Set CallSid to None, this will be used to track the call. Only one call can be used at a time.
     call_sid = None
+    # Set conversation history to an empty list
     conversation_history = []
+    # Set answering_question to False
     answering_question = False
+    # Set the port to 5000 - this is the default port used by Flask - this should be reflected in the ngrok command
     port = 5000
+    # Get the first phone number in the Twilio account - this is the number that will be used to receive calls
     number = twilio_client.incoming_phone_numbers.list()[0]
     print(f'Waiting for calls on {number.phone_number}')
     app.run(port=port)
