@@ -25,7 +25,7 @@ NGROK_URL = ""
 
 app = Flask(__name__)
 sock = Sock(app)
-twilio_client = Client()
+twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 CL = '\x1b[0K'
 BS = '\x08'
